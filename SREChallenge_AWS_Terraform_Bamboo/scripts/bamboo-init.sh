@@ -61,10 +61,11 @@ sudo chmod 755 /opt/atlassian/bamboo/*
 echo -e "\n\n[Bamboo Agent installation script]: Create and modify the application-data folder location in the Bamboo configuration files ...\n\n"
 mkdir -p /var/atlassian/application/bamboo
 chown bamboo: /var/atlassian/application/bamboo/
-cat /opt/atlassian/bamboo//atlassian-bamboo/WEB-INF/classes/bamboo-init.properties
+cat /opt/atlassian/bamboo/atlassian-bamboo/WEB-INF/classes/bamboo-init.properties
 ## You can specify your bamboo.home property here or in your system environment variables.
 #bamboo.home=C:/bamboo/bamboo-home
 #bamboo.home=/var/atlassian/application/bamboo
+echo 'bamboo.home=/var/atlassian/application/bamboo' >>/opt/atlassian/bamboo/atlassian-bamboo/WEB-INF/classes/bamboo-init.properties
 
 echo -e "\n\n[Bamboo Agent installation script]: Start the Bamboo Server ...\n\n"
 sudo chown -R bamboo:bamboo /opt/atlassian/bamboo
