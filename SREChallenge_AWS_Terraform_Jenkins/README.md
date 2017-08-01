@@ -1,0 +1,237 @@
+"# SREChallenge" 
+
+We are going to use Jenkins, AWS, Packer, Terraform and Github to execute this demo:
+
+Please have a look at the demo-presentation.pptx file in the repo for a graphical view
+
+
+Step1: In first step we will git clone the app repo into jenkins from github
+
+Step2: On that app repo, we will run the packer build to create an AMI containing the software that we need and the application
+
+Step3: We will clone the terraform repo to the jenkins from github 
+
+Step4: We will do a terraform apply to laun the app instance from AMI created by packer
+
+	   We will use S3 bucket to save the state of the infrastructure as terraform state
+	   We can do a terraform apply from local workstation or from within jenkins using these states 
+	   
+	   
+	   
+	   
+	   
+CODE FLOW:
+
+
+1. Clone the repository from the github into your linux machine
+	
+	git clone https://github.com/hassonquadri/SREChallenge
+	
+2. Create a virtual machine using Virtualbox and Vagrant. Use google in case you find it diificult to install all these
+
+	i. Install virtual box from cmd
+		
+		sudo apt-get install virtualbox
+		
+	ii. Enable virtualization to your linux machine by going into bootloader during restart of your laptop/system
+		
+	ii. Install Vagrant from cmd. Use below urls for doing software installation
+	
+		https://www.olindata.com/en/blog/2014/07/installing-vagrant-and-virtual-box-ubuntu-1404-lts
+		
+		https://www.vagrantup.com/docs/installation/source.html
+		
+		http://www.thegeekstuff.com/2016/02/setup-vagrant-on-linux/
+		
+3. Create a virtual machine to use with for deploying the requisite apps in AWS. This VM contains all the softwares that are needed.
+
+	i. Go into devops-vagrant-box folder inside the repository cloned and create a VM using Vagrant
+	
+		cd SREChallenge/devops-vagrant-box
+		
+		vagrant up
+		
+		vagrant status
+		
+	ii. ssh into this virtual box to use terraform and awscli to execute commands 
+		
+		vagrant ssh
+		
+		
+4. 	Again clone the repository from the github into this linux virtual machine. From next step onwards we are executing the commands in this VM
+	
+	git clone https://github.com/hassonquadri/SREChallenge	
+		
+		
+
+5. Create both mykey and mykey.pub using ssh-keygen in SREChallenge folder in this VM. These keys are used 
+
+	ssh-keygen -f mykey
+	
+
+	
+	
+6. The following explains the details of the files being executing during jenkins builds, terraform applies and packer builds.
+
+
+
+a. instance.tf creates instances inside AWS. This will create a jenkins instance within aws of t2.small instance in a VPC subnet defined by the variable, applies a security group again defined by variable. The ssh key is specified by variable and the user data is applied to this jenkins instance using cloud.init file. Further steps describe all the variables inside these additional files that are being used by terraform.
+
+b. The security group ingress/egress rules for these instances (jenkins and app) are defined by the securitygroup.tf file.
+
+c. User data is specified in cloud.init script for this jenkins instance. This file calls for other files inside scripts folder inside SREChallenge folder and exxecutes them.
+
+d. This scripts/jenkins-init file will install all the pre-requisite softwares to do a pipeline of the build and also mounts the volumes to the instance which is defined in instance.tf for a persistent volume.
+
+e. vars.tf defines all the variables. You can define one of the default region to use in AWS using variable AWS_REGION and then specify the ami id using variable AMIS in that particular default region. Please use https://cloud-images.ubuntu.com/locator/ec2/ for the latest ami-ids in AWS and use here.
+
+The rest variables are also defined that may be used in other files.
+
+f.  output.tf will output the instances public ips once they are created
+
+g.  s3.tf will define and cretae a s3 bucket to use for storing our terraform state. Change the bucket name in this file if it is already be use by some one else in the world.
+
+h. vpc.tf will create a VPC inside the aws with subnets, Internet Gateways (IGWs), route tables and their associations to the subnets.
+
+i. scripts/configure-remote-state.sh. This will be executed after the first terraform apply which will copy the state from the local jenkins instance to s3 bucket to be used later
+
+
+
+
+
+
+
+
+7. Now after having gone through all the files that can be used to deploy our infrastructure, we will first do a terraform apply to install a jenkins instance. Here we are notgoing to deploy app instance at this moment as we defined the variable to be "0" initially in vars.tf. The output will also populates the ip address of the jenkins instance and exposes all the ports to jenkins instance.
+
+
+	terraform apply
+
+
+8. After this jenkins instance is launce we are going to update the current state of the infrastructure to s3 bucket.
+
+	scripts/configure-remote-state.sh
+	
+	
+9. Now we are going to login to ubuntu image of jenkins. use the ip of jenkins instance
+
+	ssh -i mykey ubuntu@XX.XX.XX.XX
+	
+	su -s    (change to root)
+
+	df -h 	  (check for the mounted volume)
+
+	ps aux|grep jenkins	(to look whether jenkins is running or not)
+	
+	
+10. Goto the browser and type the ip:8080. this will give you the jenkins dashboard. create an admin user and login using the auto password created and change it.
+
+
+	create new job
+
+	enter an item name: packer-demo
+
+	select freestyle project
+
+	select github project and type https://github.com/hassonquadri/SREChallenge/tree/master/packer-demo-master
+
+	select git in source code management and type https://github.com/hassonquadri/SREChallenge/tree/master/packer-demo-master  (this will use packer to make ami and install the nodejs app using deploy.sh script)
+
+	select build /add build step: execute shell and type in command as follows:
+
+
+		ARTIFACT=`packer build -machine-readable packer-demo.json | awk -F, '$0 ~/artifact,0,id/ {print $6}'`
+		AMI_ID=`echo $ARTIFACT |cut -d ':' -f2`
+		echo 'variable "APP_INSTANCE_AMI" { default = "'${AMI_ID}'" }' > amivar.tf
+		aws s3 cp amivar.tf s3://terraform-state-12345/amivar.tf
+
+
+	save
+
+11. login to the jenkins box and configure to use aws cli.
+
+		su -jenkins
+
+		aws configure
+	
+	after this enter the AWS Access Key ID and AWS Secret Key.
+
+
+12. After configuring aws cli do the build in jenkins dashboard.
+	This will create the packer ami for use with terraform with ubuntu instance and the app installe din it. Also the above shell script will copy the ami id to amivar.tf file and is copied to s3 bucket for further use.
+	
+	
+13. I would like to point out here that we can integrate the ssh keys inside the deploy script of packer that will take care of your need to integrate https.
+
+
+14. Now we will cretae a second project in jenkins to do a terraform build to deploy the app instance using the ami created by packer.
+
+
+	create new job
+
+	enter an item name: terraform
+
+	freestyle project
+
+	select github project and type https://github.com/hassonquadri/SREChallenge
+
+	select git in source code management and type https://github.com/hassonquadri/SREChallenge (this will use packer to make ami and install the nodejs app using deploy.sh script)
+
+	select build /add build step: execute shell and type in command as follows:
+
+
+			cd SREChallenge
+			scripts/configure-remote-state.sh
+			aws s3 cp s3://terraform-state-12345/amivar.tf  amivar.tf
+			touch mykey
+			touch mykey.pub
+			terraform apply -var APP_INSTANCE_COUNT=1 -target=aws_instance.app-instance
+
+
+	save
+
+15. Build the terraform jenkins build job and this will run the app inside the AWS. It also populates the ip of the instance. Use this ip to login to the instance and check for all app services running.
+
+
+		ssh -i mykey ubuntu@XX.XX.XX.XX
+
+		sudo -s
+
+		ps aux | grep nginx
+
+		ps aux | grep node
+
+		ls /app/node_modules
+
+		curl localhost:3000 (goes to the app)
+
+		curl localhost or curl localhost:80 (goes to nginx)
+		
+		
+		
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
