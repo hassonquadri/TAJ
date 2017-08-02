@@ -156,7 +156,7 @@ i. scripts/configure-remote-state.sh. This will be executed after the first terr
 
 
 12. After configuring aws cli do the build in jenkins dashboard.
-	This will create the packer ami for use with terraform with ubuntu instance and the app installe din it. Also the above shell script will copy the ami id to amivar.tf file and is copied to s3 bucket for further use.
+	This will create the packer ami for use with terraform with ubuntu instance and the app installed in it. Also the above shell script will copy the ami id to amivar.tf file and is copied to s3 bucket for further use.
 	
 	
 13. I would like to point out here that we can integrate the ssh keys inside the deploy script of packer that will take care of your need to integrate https.
